@@ -1,0 +1,134 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+
+Program.Sub.Main.Start
+V.Local.iFileNo.Declare
+V.Local.iCCount.Declare
+V.Local.fCValue.Declare(Float)
+V.Local.sCCount.Declare
+V.Local.sCLine.Declare
+V.Local.sCValue.Declare
+V.Local.sDate.Declare
+V.Local.sFile.Declare
+V.Local.sFileNo.Declare
+V.Local.sField.Declare
+V.Local.sFiller.Declare
+V.Local.sRecA.Declare
+V.Local.sRecC.Declare
+V.Local.sRecZ.Declare
+V.Local.sRecords.Declare
+V.Local.sSql.Declare
+V.Local.sYear.Declare
+
+F.ODBC.Connection!Con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+'--###Rec A###---
+'set the originator ID- should be 10char long
+V.Local.sField.Set("")
+'Format File number to 4 digits
+V.Local.sSql.Set("select Top 1 FileNo from ATG_3418_ACH_DepFileNo order by FileNo desc")
+F.ODBC.Connection!Con.OpenLocalRecordsetRW("rstRO",V.Local.sSql)
+F.Intrinsic.Control.If(V.ODBC.Con!rstRO.EOF,=,True)
+	V.Local.iFileNo.Set(1)
+	F.ODBC.Con!rstRO.AddNew
+	F.ODBC.Con!rstRO.Set!FileNo(V.Local.iFileNo)
+	F.ODBC.Con!rstRO.Update
+F.Intrinsic.Control.Else
+	V.Local.iFileNo.Set(V.ODBC.Con!rstRO.FieldVal!FileNo)
+F.Intrinsic.Control.EndIf
+F.Intrinsic.String.LPad(V.Local.iFileNo,"0",4,V.Local.sFileNo)
+'Format Date to Julian Date
+F.Intrinsic.String.LPad(V.Ambient.Now.FormatYY,"0",3,V.Local.sYear)
+F.Intrinsic.String.LPad(V.Ambient.Now.FormatY,"0",3,V.Local.sDate)
+F.Intrinsic.String.Concat(V.Local.sYear,V.Local.sDate,V.Local.sDate)
+F.Intrinsic.String.LPad(V.Local.sFiller.Trim," ",20,V.Local.sFiller)
+'"A", Logical Record Count(9), Originator ID(10), File#(4), File Creation date(6), Destination datacenter code(5), Filler(20), Currency Code(3, Optional)
+F.Intrinsic.String.Concat("A","000000001","AGSARCCF20",V.Local.sFileNo,V.Local.sDate,"00120",V.Local.sFiller,"   ",V.Local.sRecA)
+'Filler(1406)
+F.Intrinsic.String.LPad(V.Local.sFiller.Trim," ",1406,V.Local.sFiller)
+F.Intrinsic.String.Concat(V.Local.sRecA,V.Local.sFiller,V.Local.sRecA)
+
+'--###Rec C###---
+V.Local.iCCount.Set(0)
+V.Local.fCValue.Set(0)
+V.Local.sSql.Set("select Check_amt, Bank_Account, Vendor_Name, Vendor_ID from ACH_PAYMENT where uCase(Exported) <> 'Y'")
+F.ODBC.Connection!Con.OpenLocalRecordsetRO("rstACH",V.Local.sSql)
+F.Intrinsic.Control.DoUntil(V.ODBC.Con!rstACH.EOF,=,True)
+	'Count # and value of 'C' records
+	F.Intrinsic.Math.Add(V.Local.iCCount,1,V.Local.iCCount)
+	F.Intrinsic.Math.Add(V.Local.fCValue,V.ODBC.Con!rstACH.FieldVal!Check_amt,V.Local.fCValue)
+
+	F.Intrinsic.String.Replace(V.ODBC.Con!rstACH.FieldVal!Check_amt,".","",V.Local.sField)
+	F.Intrinsic.String.LPad(V.Local.sField,"0",10,V.Local.sField)
+	'"C",Amount(10), Payor/Payee ID(9, 0BBBTTTTT)
+	F.Intrinsic.String.Concat("C",V.Local.sField,"000124162",V.Local.sCLine)
+	'Payor/Payee Account#
+	F.Intrinsic.String.RPad(V.ODBC.Con!rstACH.FieldVal!Bank_Account," ",12,V.Local.sField)
+	F.Intrinsic.String.Concat(V.Local.sCLine,V.Local.sField,V.Local.sCLine)
+	'Payor/Payee Name
+	F.Intrinsic.String.LPad(V.ODBC.Con!rstACH.FieldVal!Vendor_Name," ",29,V.Local.sField)
+	F.Intrinsic.String.Concat(V.Local.sCLine,V.Local.sField,V.Local.sCLine)
+	'Cross Ref#
+	F.Intrinsic.String.LPad(V.ODBC.Con!rstACH.FieldVal!Vendor_ID," ",19,V.Local.sField)
+	F.Intrinsic.String.Concat(V.Local.sCLine,V.Local.sField,V.Local.sCLine)
+
+	F.Intrinsic.Control.If(V.Local.iCCount,=,1)
+		V.Local.sRecC.Set(V.Local.sCLine)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.String.Concat(V.Local.sRecC,V.Ambient.NewLine,V.Local.sCLine,V.Local.sRecC)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.Con!rstACH.MoveNext
+F.Intrinsic.Control.Loop
+F.ODBC.Con!rstACH.close
+
+'--###Rec Z###---
+'Value & # of rec for D- Fill with '0's. 14+5 (=19)Char
+V.Local.sFiller.Set("")
+F.Intrinsic.String.LPad(V.Local.sFiller.Trim,"0",19,V.Local.sFiller)
+'Value & # of rec for C- Pad to. 14+5 (=19)Char
+F.Intrinsic.String.Replace(V.Local.sCValue,".","",V.Local.sCValue)
+F.Intrinsic.String.LPad(V.Local.fCValue,"0",14,V.Local.sCValue)
+F.Intrinsic.String.LPad(V.Local.iCCount,"0",5,V.Local.sCCount)
+'"Z", Tot Val For D rec(14, Zeros), Tot# of D rec(5, Zeros), Tot Val For 'C' rec(14), Tot# of 'C' rec(5)
+F.Intrinsic.String.Concat("Z",V.Local.sFiller,V.Local.sCValue,V.Local.sCCount,V.Local.sRecZ)
+'Filler(41)
+V.Local.sFiller.Set("")
+F.Intrinsic.String.LPad(V.Local.sFiller.Trim," ",41,V.Local.sFiller)
+F.Intrinsic.String.Concat(V.Local.sRecZ,V.Local.sFiller,V.Local.sRecZ)
+
+'--###Save the file###---
+F.Intrinsic.UI.ShowSaveFileDialog("","txt|*.txt",V.Local.sFile)
+F.Intrinsic.Control.If(V.Local.sFile,=,"***CANCEL***")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Concat(V.Local.sRecA,V.Ambient.NewLine,V.Local.sRecC,V.Ambient.NewLine,V.Local.sRecZ,V.Local.sRecords)
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.sRecords)
+F.Intrinsic.Control.EndIf
+'----###Change exported flag to 'Y' ###---
+V.Local.sSql.Set("Update ACH_PAYMENT set Exported = 'Y'")
+F.ODBC.Connection!Con.Execute(V.Local.sSql)
+'---###Update the File # Field ###---
+F.Intrinsic.Math.Add(V.Local.iFileNo,1,V.Local.iFileNo)
+F.Intrinsic.String.Concat("Update ATG_3418_ACH_DepFileNo set FileNo='",V.Local.iFileNo,"'",V.Local.sSql)
+F.ODBC.Connection!Con.Execute(V.Local.sSql)
+
+F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.End
+
+Program.Sub.Main.End
+
+
+Program.Sub.Comments.Start
+${$0$}$ATG_ACH_FLYN$}$CHANDANA$}$4/1/2012
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Quote Number: 3294
+Customer Name: Flynn Canada, Ltd.
+Reference Number: FLY010-11620121535-5
+Title: Custom ACH File Export (BMO Financial Group)
+
+Program.Sub.Comments.End
+
